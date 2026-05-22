@@ -29,7 +29,7 @@ export default async function handler(req, res) {
                 'Content-Type': 'application/json',
                 'apikey': SUPABASE_KEY,
                 'Authorization': `Bearer ${SUPABASE_KEY}`,
-                'Prefer': 'return=representation'
+                'Prefer': 'return=minimal'
             },
             body: JSON.stringify({
                 key_string: finalKey
