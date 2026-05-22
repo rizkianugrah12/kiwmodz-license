@@ -8,8 +8,10 @@ let currentStep = 0;
 let countdown = WAIT_TIME;
 let timerInterval = null;
 let isTabActive = true;
-let startTime = 0;
-let stepTimestamps = [];
+
+// Variabel Token Keamanan dari Server
+let secureServerTime = null;
+let secureServerToken = null;
 
 const btn = document.getElementById('mainBtn');
 const stepInfo = document.getElementById('stepInfo');
@@ -39,12 +41,30 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
+// 3. Minta Izin Mulai dari Server Asli (Anti Cheat Engine / Fast Forward)
+async function initServerTimer() {
+    try {
+        const response = await fetch('/api/init');
+        const data = await response.json();
+        secureServerTime = data.serverTime;
+        secureServerToken = data.token;
+    } catch (err) {
+        alert("Gagal terhubung ke server keamanan!");
+    }
+}
+
+// 4. Minta Key dari Server jika sudah selesai
 async function requestKeyFromServer() {
     try {
-        // HANYA memanggil Backend API lokal (Vercel Serverless)
-        // Tidak ada lagi konfigurasi Supabase di Frontend!
         const response = await fetch('/api/generate', {
-            method: 'POST'
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                serverTime: secureServerTime,
+                token: secureServerToken
+            })
         });
 
         const data = await response.json();
@@ -53,25 +73,28 @@ async function requestKeyFromServer() {
             keyValue.innerText = data.key;
         } else {
             keyValue.innerText = "ERROR: " + (data.error || "Gagal membuat key");
+            // Jika ketahuan nge-bypass waktu
+            if (response.status === 403) {
+                keyValue.style.color = "red";
+                alert("PERINGATAN: " + data.error);
+            }
         }
     } catch (err) {
         keyValue.innerText = "ERROR: Koneksi ke server mati.";
     }
 }
 
-// 3. Verifikasi Keaslian Waktu
-function verifyIntegrity() {
-    if (stepTimestamps.length !== MAX_STEPS) return false;
-    let totalTime = (Date.now() - startTime) / 1000;
-    if (totalTime < ((MAX_STEPS * WAIT_TIME) - 2)) {
-        return false;
-    }
-    return true;
-}
-
-window.nextStep = function() {
+window.nextStep = async function() {
+    // Pada langkah 0, inisiasi waktu dari Server Vercel
     if (currentStep === 0) {
-        startTime = Date.now();
+        btn.innerText = "MENGHUBUNGKAN KE SERVER...";
+        btn.disabled = true;
+        await initServerTimer();
+        if (!secureServerTime) {
+            btn.innerText = "MULAI LANGKAH 1";
+            btn.disabled = false;
+            return;
+        }
     }
 
     if (currentStep >= MAX_STEPS) return;
@@ -95,27 +118,16 @@ window.nextStep = function() {
             currentStep++;
             stepInfo.innerText = `Langkah: ${currentStep} / ${MAX_STEPS}`;
             
-            stepTimestamps.push(Date.now());
-
             if (currentStep < MAX_STEPS) {
                 btn.disabled = false;
                 btn.innerText = `LANJUT LANGKAH ${currentStep + 1}`;
             } else {
                 btn.innerText = "MEMPROSES KEY...";
-                
-                if (!verifyIntegrity()) {
-                    btn.innerText = "BYPASS TERDETEKSI!";
-                    btn.style.backgroundColor = "red";
-                    btn.style.color = "white";
-                    alert("Peringatan Keamanan! Tindakan manipulasi script terdeteksi.");
-                    return;
-                }
-
                 btn.style.display = 'none';
                 stepInfo.style.display = 'none';
                 keyBox.style.display = 'block';
                 
-                // Minta server untuk buat dan simpan key
+                // Minta server verifikasi waktu dan buat key
                 requestKeyFromServer();
             }
         }
