@@ -4,9 +4,9 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: 'Metode Tidak Diizinkan' });
     }
 
-    // Ambil Kunci Rahasia dari Environment Variables Vercel (.env)
-    const SUPABASE_URL = process.env.SUPABASE_URL;
-    const SUPABASE_KEY = process.env.SUPABASE_KEY;
+    // Hardcode Kunci Rahasia di Backend (Aman karena file ini tidak bisa dilihat pengguna)
+    const SUPABASE_URL = "https://sngqoqamaaqkasbhdqyk.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_mQb1q7mK6a5FqSmRXpB8bg_Z5wTouQh";
 
     if (!SUPABASE_URL || !SUPABASE_KEY) {
         return res.status(500).json({ error: 'Konfigurasi Server Belum Lengkap' });
