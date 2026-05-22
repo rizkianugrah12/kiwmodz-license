@@ -9,14 +9,30 @@ let countdown = WAIT_TIME;
 let timerInterval = null;
 let isTabActive = true;
 
-// Variabel Token Keamanan dari Server
-let secureServerTime = null;
-let secureServerToken = null;
+// Variabel Token Keamanan berantai
+let currentServerToken = null;
 
 const btn = document.getElementById('mainBtn');
 const stepInfo = document.getElementById('stepInfo');
 const keyBox = document.getElementById('keyBox');
 const keyValue = document.getElementById('keyValue');
+
+// ----------------------------------------------------
+// SISTEM ANTI-INJEKSI KELAS BERAT (CLIENT-SIDE)
+// ----------------------------------------------------
+(function() {
+    // 1. Cek apakah fungsi asli browser telah dimanipulasi oleh ekstensi/script luar
+    const isNative = (fn) => /\[native code\]/.test(fn.toString());
+    
+    if (!isNative(setInterval) || !isNative(setTimeout) || !isNative(fetch)) {
+        alert("CRITICAL WARNING: Modifikasi Sistem Terdeteksi! Fungsi inti browser Anda telah disabotase oleh Ekstensi/Script Bypasser.");
+        document.body.innerHTML = "<h1 style='color:red;text-align:center;margin-top:20%'>AKSES DIBLOKIR. MATIKAN EXTENSION CHEAT / TAMPERMONKEY ANDA.</h1>";
+        throw new Error("Sistem disabotase");
+    }
+
+    // 2. Kunci object penting agar tidak bisa dioverride oleh hacker
+    Object.freeze(window.location);
+})();
 
 // 1. Anti-Inspect Element & Anti-Right Click
 document.addEventListener('contextmenu', event => event.preventDefault());
@@ -41,30 +57,44 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
-// 3. Minta Izin Mulai dari Server Asli (Anti Cheat Engine / Fast Forward)
-async function initServerTimer() {
+// 3. Verifikasi Langkah ke Server (Dipanggil SETIAP 1 langkah selesai)
+async function verifyStepWithServer(stepToVerify) {
     try {
-        const response = await fetch('/api/init');
+        const response = await fetch('/api/step', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                step: stepToVerify,
+                previousToken: currentServerToken
+            })
+        });
+
         const data = await response.json();
-        secureServerTime = data.serverTime;
-        secureServerToken = data.token;
+
+        if (response.ok && data.token) {
+            // Jika server merestui, simpan token baru untuk langkah berikutnya
+            currentServerToken = data.token;
+            return true;
+        } else {
+            // Jika server mendeteksi SpeedHack di langkah tertentu
+            keyValue.style.color = "red";
+            alert("PERINGATAN SERVER: " + (data.error || "Akses Ilegal"));
+            document.body.innerHTML = `<h1 style='color:red;text-align:center;margin-top:20%'>${data.error}</h1>`;
+            return false;
+        }
     } catch (err) {
         alert("Gagal terhubung ke server keamanan!");
+        return false;
     }
 }
 
-// 4. Minta Key dari Server jika sudah selesai
+// 4. Minta Key Final
 async function requestKeyFromServer() {
     try {
         const response = await fetch('/api/generate', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                serverTime: secureServerTime,
-                token: secureServerToken
-            })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: currentServerToken })
         });
 
         const data = await response.json();
@@ -73,7 +103,6 @@ async function requestKeyFromServer() {
             keyValue.innerText = data.key;
         } else {
             keyValue.innerText = "ERROR: " + (data.error || "Gagal membuat key");
-            // Jika ketahuan nge-bypass waktu
             if (response.status === 403) {
                 keyValue.style.color = "red";
                 alert("PERINGATAN: " + data.error);
@@ -85,16 +114,14 @@ async function requestKeyFromServer() {
 }
 
 window.nextStep = async function() {
-    // Pada langkah 0, inisiasi waktu dari Server Vercel
+    // Langkah Awal (0)
     if (currentStep === 0) {
-        btn.innerText = "MENGHUBUNGKAN KE SERVER...";
+        btn.innerText = "MEMBUKA KONEKSI SERVER...";
         btn.disabled = true;
-        await initServerTimer();
-        if (!secureServerTime) {
-            btn.innerText = "MULAI LANGKAH 1";
-            btn.disabled = false;
-            return;
-        }
+        
+        // Minta token langkah 0
+        const success = await verifyStepWithServer(0);
+        if (!success) return;
     }
 
     if (currentStep >= MAX_STEPS) return;
@@ -106,7 +133,7 @@ window.nextStep = async function() {
     btn.innerText = `Menunggu... ${countdown}s`;
 
     clearInterval(timerInterval);
-    timerInterval = setInterval(() => {
+    timerInterval = setInterval(async () => {
         if (!isTabActive) return;
 
         countdown--;
@@ -115,6 +142,12 @@ window.nextStep = async function() {
         if (countdown <= 0) {
             clearInterval(timerInterval);
             timerInterval = null;
+            
+            // Server Side Verifikasi per tahap (Wajib!)
+            btn.innerText = "SINKRONISASI SERVER...";
+            const success = await verifyStepWithServer(currentStep + 1);
+            if (!success) return; // Langsung mati jika pakai SpeedHack
+            
             currentStep++;
             stepInfo.innerText = `Langkah: ${currentStep} / ${MAX_STEPS}`;
             
@@ -127,7 +160,6 @@ window.nextStep = async function() {
                 stepInfo.style.display = 'none';
                 keyBox.style.display = 'block';
                 
-                // Minta server verifikasi waktu dan buat key
                 requestKeyFromServer();
             }
         }
@@ -147,3 +179,9 @@ window.copyKey = function() {
         }
     }
 }
+
+// 3. Pencegahan modifikasi fungsi nextStep
+Object.defineProperty(window, 'nextStep', {
+    writable: false,
+    configurable: false
+});

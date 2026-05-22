@@ -1,34 +1,40 @@
 const crypto = require('crypto');
 
+const SECRET = "kiwmodz_super_secret_123_STEP!";
+
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Metode Tidak Diizinkan' });
     }
 
-    // 1. SISTEM ANTI-BYPASS SERVER SIDE
-    const { serverTime, token } = req.body;
+    const { token } = req.body;
     
-    if (!serverTime || !token) {
+    if (!token) {
         return res.status(400).json({ error: 'Akses Ilegal: Token Tidak Ditemukan!' });
     }
 
-    const SECRET = "kiwmodz_super_secret_123!";
-    const expectedHash = crypto.createHmac('sha256', SECRET).update(serverTime.toString()).digest('hex');
-
-    if (token !== expectedHash) {
-        return res.status(403).json({ error: 'Bypass Terdeteksi: Token Palsu!' });
+    // Parse Token
+    const parts = token.split('|');
+    if (parts.length !== 3) {
+        return res.status(403).json({ error: 'Akses Ditolak: Token Rusak!' });
     }
 
-    const waktuSekarangDiServer = Date.now();
-    const waktuBerlalu = (waktuSekarangDiServer - parseInt(serverTime)) / 1000;
+    const prevStep = parseInt(parts[0]);
+    const prevTime = parseInt(parts[1]);
+    const prevHash = parts[2];
 
-    // WAJIB minimal 48 detik berlalu di jam asli Server Vercel. 
-    // Hacker mau pakai aplikasi percepat waktu di HP/PC mereka, TIDAK AKAN Ngaruh ke Server Vercel!
-    if (waktuBerlalu < 48) {
-        return res.status(403).json({ error: `Bypass Waktu Terdeteksi! Waktu baru berjalan ${Math.floor(waktuBerlalu)} detik di server asli.` });
+    // Validasi Integritas Token
+    const expectedHash = crypto.createHmac('sha256', SECRET).update(`${prevStep}|${prevTime}`).digest('hex');
+    if (prevHash !== expectedHash) {
+        return res.status(403).json({ error: 'Bypass Terdeteksi: Token Dimanipulasi!' });
     }
 
-    // 2. GENERATE KEY DAN SIMPAN
+    // Pastikan token berasal dari Langkah ke-5
+    if (prevStep !== 5) {
+        return res.status(403).json({ error: 'Bypass Terdeteksi: Anda belum menyelesaikan semua 5 langkah!' });
+    }
+
+    // GENERATE KEY DAN SIMPAN
     const SUPABASE_URL = "https://sngqoqamaaqkasbhdqyk.supabase.co";
     const SUPABASE_KEY = "sb_publishable_mQb1q7mK6a5FqSmRXpB8bg_Z5wTouQh";
 
